@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0f19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Nexus Finanzas VZLA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #070b14; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+    .card { background-color: #0e1422; border: 1px solid #1e293b; border-radius: 0.75rem; }
+    .subcard { background-color: #121a2b; border: 1px solid #1e293b; border-radius: 0.6rem; }
+    .input-dark { background-color: #090e1a; border: 1px solid #26334d; color: #f8fafc; border-radius: 0.5rem; }
+    .input-dark:focus { outline: none; border-color: #10b981; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070b14; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen p-3 md:p-5">
+
+  <div class="max-w-7xl mx-auto space-y-4">
+    <!-- BARRA SUPERIOR -->
+    <header class="card p-3 md:p-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">$</div>
+        <div>
+          <h1 class="font-bold text-white text-base md:text-lg leading-tight">Nexus Finanzas</h1>
+          <p id="currentDateText" class="text-xs text-slate-400 capitalize"></p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <button onclick="openCloudModal()" id="syncBadge" class="px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800/70 hover:bg-slate-800 flex items-center gap-1.5 transition">
+          <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="syncText">Local (Config. Nube)</span>
+        </button>
+
+        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-slate-700 bg-slate-900">
+          <span class="text-slate-400">BCV:</span>
+          <input id="rateBcvInput" type="number" step="0.01" onchange="updateManualRate('bcv', this.value)" class="w-16 bg-transparent text-white font-semibold focus:outline-none text-right" />
+        </div>
+
+        <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-slate-700 bg-slate-900">
+          <span class="text-slate-400">USDT:</span>
+          <input id="rateUsdtInput" type="number" step="0.01" onchange="updateManualRate('usdt', this.value)" class="w-16 bg-transparent text-white font-semibold focus:outline-none text-right" />
+        </div>
+
+        <div class="px-2.5 py-1.5 rounded-full border border-slate-700 bg-slate-900 text-slate-300">
+          Prom: <strong id="ratePromText" class="text-white">0,00</strong>
+        </div>
+
+        <button onclick="fetchVenezuelaRates(true)" title="Actualizar tasas desde DolarApi" class="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-sky-400">↻ Tasas</button>
+        <button onclick="exportJSON()" class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200">Exportar JSON</button>
+        <label class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer">
+          Importar JSON
+          <input type="file" accept=".json" onchange="importJSON(event)" class="hidden" />
+        </label>
+      </div>
+    </header>
+
+    <!-- ALERTA COMPROMISOS PRÓXIMOS (0 A 7 DÍAS) -->
+    <section id="upcomingBanner" class="hidden rounded-xl border border-amber-500/40 bg-amber-950/20 p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div>
+        <div class="text-amber-300 text-xs font-semibold mb-1.5" id="upcomingTitle">Compromisos próximos (0 a 7 días): 0 movimiento(s)</div>
+        <div id="upcomingChips" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div class="text-left md:text-right shrink-0">
+        <div class="text-[11px] uppercase tracking-wider text-slate-400">Salidas Próximas (USD × Tasa)</div>
+        <div id="upcomingTotalBs" class="text-amber-400 font-bold text-lg">Bs 0,00</div>
+        <div id="upcomingTotalUsd" class="text-xs text-slate-400">$ 0.00</div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD CONTROL DE FLUJO -->
+    <section class="card p-4 md:p-5 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Control de flujo anclado a $ (multiplicado a Bs)</h2>
+        <div class="inline-flex rounded-lg bg-slate-900 p-1 border border-slate-800 text-xs">
+          <button onclick="setActiveRateType('bcv')" id="btnRateBcv" class="px-3 py-1 rounded-md font-medium transition">BCV</button>
+          <button onclick="setActiveRateType('prom')" id="btnRateProm" class="px-3 py-1 rounded-md font-medium transition">Promedio</button>
+          <button onclick="setActiveRateType('usdt')" id="btnRateUsdt" class="px-3 py-1 rounded-md font-medium transition">USDT</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+        <div class="lg:col-span-7 space-y-1">
+          <div class="text-[11px] uppercase tracking-wider text-slate-400">Disponible real (Ingresos cobrados - Pagos/Gastos ejecutados - Ahorro)</div>
+          <div id="availableUsd" class="text-3xl md:text-4xl font-extrabold text-emerald-400">$ 0.00</div>
+          <div id="availableBs" class="text-xl md:text-2xl font-bold text-white">Bs 0,00</div>
+          <div id="rateFormulaInfo" class="text-xs text-slate-400 pt-1"></div>
+        </div>
+
+        <div class="lg:col-span-5 subcard p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs text-slate-300">
+            <span>Meta de Ahorro / Inversión ($)</span>
+            <span id="savingsPctText" class="font-semibold text-amber-400">0.0% de meta</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="savingsGoalInput" type="number" step="10" onchange="updateSavingsGoal(this.value)" class="input-dark px-3 py-1.5 text-sm w-32 font-semibold" />
+            <div class="flex-1 bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div id="savingsBar" class="bg-amber-400 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+          <div id="savingsAccumText" class="text-xs text-slate-400">Acumulado: $ 0.00 (Bs 0,00) de $ 500.00</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+        <div class="subcard p-3.5">
+          <div class="text-xs text-slate-400">Ingresos ya cobrados</div>
+          <div id="kpiIncomeBs" class="text-base md:text-lg font-bold text-emerald-400 mt-1">Bs 0,00</div>
+          <div id="kpiIncomeUsd" class="text-xs text-slate-400">$ 0.00</div>
+        </div>
+        <div class="subcard p-3.5">
+          <div class="text-xs text-slate-400">Por ingresar (Pendiente)</div>
+          <div id="kpiPendingInBs" class="text-base md:text-lg font-bold text-sky-400 mt-1">Bs 0,00</div>
+          <div id="kpiPendingInUsd" class="text-xs text-slate-400">$ 0.00</div>
+        </div>
+        <div class="subcard p-3.5">
+          <div class="text-xs text-slate-400">Por pagar (Cuotas + Deudas)</div>
+          <div id="kpiPendingOutBs" class="text-base md:text-lg font-bold text-rose-400 mt-1">Bs 0,00</div>
+          <div id="kpiPendingOutUsd" class="text-xs text-slate-400">$ 0.00</div>
+        </div>
+        <div class="subcard p-3.5">
+          <div class="text-xs text-slate-400">Ahorro e Inversión</div>
+          <div id="kpiSavingsBs" class="text-base md:text-lg font-bold text-amber-400 mt-1">Bs 0,00</div>
+          <div id="kpiSavingsUsd" class="text-xs text-slate-400">$ 0.00</div>
+        </div>
+      </div>
+
+      <!-- TERMÓMETRO DE AUTOGESTIÓN (PARA ANALIZAR SIN DEPENDER DE LA IA) -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
+        <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3 space-y-1">
+          <div class="text-slate-400 font-semibold">1. Brecha Cambiaria (USDT vs BCV)</div>
+          <div id="metricSpreadVal" class="text-sm font-bold text-sky-400">0.0%</div>
+          <p id="metricSpreadTip" class="text-[11px] text-slate-400 leading-snug"></p>
+        </div>
+        <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3 space-y-1">
+          <div class="text-slate-400 font-semibold">2. Presión de Pagos (Próximos 7 días)</div>
+          <div id="metricPressureVal" class="text-sm font-bold text-emerald-400">0% del disponible</div>
+          <p id="metricPressureTip" class="text-[11px] text-slate-400 leading-snug"></p>
+        </div>
+        <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3 space-y-1">
+          <div class="text-slate-400 font-semibold">3. Regla de Oro (Puente Ubi / Cuotas)</div>
+          <div id="metricBridgeVal" class="text-sm font-bold text-amber-300">Criterio de liquidez</div>
+          <p class="text-[11px] text-slate-400 leading-snug">Solo usa un crédito puente si evita mora y tienes un ingreso confirmado antes de su vencimiento. Si no, crea bola de nieve.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORMULARIOS + CHAT MENTOR IA -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- REGISTRAR MOVIMIENTO / CUOTAS / PUENTE UBI -->
+      <section class="lg:col-span-6 card p-4 md:p-5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Registrar movimiento (Ancla en $)</h2>
+          <div class="inline-flex rounded-lg bg-slate-900 p-1 border border-slate-800 text-[11px]">
+            <button type="button" onclick="setFormMode('simple')" id="modeSimpleBtn" class="px-2.5 py-1 rounded font-semibold bg-emerald-500 text-slate-950">Simple</button>
+            <button type="button" onclick="setFormMode('installments')" id="modeInstallmentsBtn" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">Compra en Cuotas</button>
+            <button type="button" onclick="setFormMode('rotative')" id="modeRotativeBtn" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">Puente (Ubi)</button>
+          </div>
+        </div>
+
+        <!-- MODO 1: SIMPLE -->
+        <form id="panelSimple" onsubmit="addTransaction(event)" class="space-y-3 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Tipo</label>
+              <select id="txType" class="input-dark w-full p-2.5 text-sm">
+                <option value="Ingreso">Ingreso</option>
+                <option value="Gasto">Gasto</option>
+                <option value="Deuda">Deuda / Cuota</option>
+                <option value="Ahorro">Ahorro / Inversión</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Estado</label>
+              <select id="txStatus" class="input-dark w-full p-2.5 text-sm">
+                <option value="Completado">Completado (Ya lo tengo / pagué)</option>
+                <option value="Pendiente">Pendiente (Por cobrar / pagar)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Concepto / Cuota</label>
+              <input id="txConcept" required placeholder="Ej. Sueldo, Pago Krece, Almuerzo" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Etiquetas (separadas por coma)</label>
+              <input id="txTags" placeholder="Ej. empleo, cashea, ubi" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Ingresar monto en</label>
+              <select id="txCurrency" onchange="updateAnchorPreview()" class="input-dark w-full p-2.5 text-sm">
+                <option value="USD">Dólares ($ - Ancla directa)</option>
+                <option value="BS">Bolívares (Bs - Convierte a $)</option>
+              </select>
+            </div>
+            <div>
+              <label id="txAmountLabel" class="block text-slate-400 mb-1">Monto en Dólares ($ - ancla)</label>
+              <input id="txAmount" type="number" step="0.01" min="0.01" required oninput="updateAnchorPreview()" placeholder="0.00" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+          </div>
+
+          <div id="anchorPreview" class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-400 text-xs">
+            Ancla: $ 0.00 × 0.00 = Bs 0,00
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Fecha registro</label>
+              <input id="txDate" type="date" required class="input-dark w-full p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Fecha límite / cobro</label>
+              <input id="txDueDate" type="date" class="input-dark w-full p-2 text-sm" />
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition">
+            Guardar movimiento
+          </button>
+        </form>
+
+        <!-- MODO 2: COMPRA EN CUOTAS (EJ. NEVERA + INICIAL + N CUOTAS) -->
+        <form id="panelInstallments" onsubmit="addInstallmentPlan(event)" class="hidden space-y-3 text-xs">
+          <div class="p-2.5 rounded-lg bg-sky-950/30 border border-sky-500/30 text-sky-200 text-[11px]">
+            Ideal para compras como tu <strong>nevera</strong>, Cashea o Krece: registra la inicial pagada hoy y genera automáticamente todas tus cuotas pendientes con sus fechas.
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Artículo / Compra</label>
+              <input id="instConcept" required placeholder="Ej. Nevera, Teléfono, Cashea" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Etiquetas</label>
+              <input id="instTags" placeholder="Ej. nevera, hogar, cashea" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-slate-400 mb-1">Total ($)</label>
+              <input id="instTotal" type="number" step="0.01" min="0.01" required oninput="updateInstallmentPreview()" placeholder="400.00" class="input-dark w-full p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Inicial hoy ($)</label>
+              <input id="instInitial" type="number" step="0.01" min="0" value="0" oninput="updateInstallmentPreview()" placeholder="100.00" class="input-dark w-full p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">N° Cuotas</label>
+              <input id="instCount" type="number" min="1" max="36" value="6" required oninput="updateInstallmentPreview()" class="input-dark w-full p-2 text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Frecuencia de cuotas</label>
+              <select id="instFreq" onchange="updateInstallmentPreview()" class="input-dark w-full p-2.5 text-sm">
+                <option value="14">Cada 14 días (Cashea)</option>
+                <option value="15">Cada 15 días (Quincenal)</option>
+                <option value="monthly">Mensual (Mismo día)</option>
+                <option value="7">Semanal (Cada 7 días)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Fecha de compra / inicial</label>
+              <input id="instStartDate" type="date" required onchange="updateInstallmentPreview()" class="input-dark w-full p-2 text-sm" />
+            </div>
+          </div>
+
+          <div id="instPreview" class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300 text-xs">
+            Ingresa el total y la inicial para previsualizar el plan de cuotas.
+          </div>
+
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm transition">
+            Crear inicial + generar cuotas
+          </button>
+        </form>
+
+        <!-- MODO 3: CRÉDITO ROTATIVO / PUENTE (UBI) -->
+        <form id="panelRotative" onsubmit="addRotativeBridge(event)" class="hidden space-y-3 text-xs">
+          <div class="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-200 text-[11px] leading-relaxed">
+            <strong>Estrategia Puente (Ubi):</strong> Al pedir un préstamo para cubrir otra cuota, recibes liquidez hoy (<em>Ingreso Completado</em>) y agendas la devolución futura (<em>Deuda Pendiente</em>). Así no duplicas gastos ni pierdes de vista el compromiso real.
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Plataforma / Origen</label>
+              <input id="rotName" value="Ubi" required class="input-dark w-full p-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">¿Para qué lo usas?</label>
+              <input id="rotPurpose" placeholder="Ej. Pagar cuota Nevera / Cashea" required class="input-dark w-full p-2.5 text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Monto recibido hoy ($)</label>
+              <input id="rotAmount" type="number" step="0.01" min="0.01" required oninput="updateRotativePreview()" placeholder="60.00" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Total a devolver ($ con comisión)</label>
+              <input id="rotRepay" type="number" step="0.01" min="0.01" required oninput="updateRotativePreview()" placeholder="63.00" class="input-dark w-full p-2.5 text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-400 mb-1">Fecha desembolso</label>
+              <input id="rotDate" type="date" required class="input-dark w-full p-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Fecha límite de devolución</label>
+              <input id="rotDueDate" type="date" required class="input-dark w-full p-2 text-sm" />
+            </div>
+          </div>
+
+          <div id="rotPreview" class="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300 text-xs">
+            Costo financiero del puente: $ 0.00 (0.0%)
+          </div>
+
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition">
+            Registrar puente Ubi (Liquidez + Deuda futura)
+          </button>
+        </form>
+      </section>
+
+      <!-- CHAT MENTOR FINANCIERO IA -->
+      <section class="lg:col-span-6 card p-4 md:p-5 flex flex-col justify-between space-y-3 min-h-[450px]">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Mentor Financiero (Aprende a decidir)</h2>
+          </div>
+          <button onclick="openAiModal()" class="px-2.5 py-1 rounded-md border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-violet-300">
+            API IA <span id="aiStatusBadge" class="text-[10px] text-slate-400 ml-1">●</span>
+          </button>
+        </div>
+
+        <div id="chatMessages" class="flex-1 subcard p-3 space-y-2.5 overflow-y-auto max-h-[300px] text-xs leading-relaxed">
+          <div class="bg-violet-950/50 border border-violet-500/30 rounded-lg p-3 text-slate-200 max-w-[95%]">
+            Soy tu <strong>Mentor Financiero</strong>. No solo te daré respuestas: te mostraré <strong>qué indicadores mirar, cómo hacer las cuentas entre BCV/USDT y cómo comparar opciones</strong> para que cada vez dependas menos de mí. Configura tu API Key en <em>"API IA"</em> o usa los botones rápidos abajo.
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex flex-wrap gap-1.5 text-[11px]">
+            <button type="button" onclick="quickAsk('Analiza mi flujo hoy y enséñame qué indicador debo vigilar primero.')" class="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 hover:border-violet-400 text-slate-300">📊 Analizar flujo</button>
+            <button type="button" onclick="quickAsk('Explícame cómo evaluar si me conviene usar Ubi como puente para pagar una cuota o esperar a mi próximo ingreso.')" class="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 hover:border-violet-400 text-slate-300">🔄 Evaluar puente Ubi</button>
+            <button type="button" onclick="quickAsk('Según la brecha BCV vs USDT de hoy, enséñame cuándo conviene pagar cuotas en Bs y cuándo guardar dólares.')" class="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 hover:border-violet-400 text-slate-300">💱 BCV vs USDT</button>
+          </div>
+          <form onsubmit="sendChatMessage(event)" class="flex gap-2">
+            <input id="chatInput" placeholder="Pregúntame tu duda financiera o pide que evaluemos una decisión..." class="input-dark flex-1 px-3 py-2 text-sm" />
+            <button type="submit" id="chatSendBtn" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm transition">
+              Enviar
+            </button>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <!-- MOVIMIENTOS, CUOTAS Y FILTROS -->
+    <section class="card p-4 md:p-5 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Movimientos, cuotas y filtros</h2>
+        <div class="flex flex-wrap gap-1.5 text-xs" id="statusFilterTabs">
+          <button onclick="setFilterTab('Todos')" data-tab="Todos" class="tab-btn px-3 py-1 rounded-md">Todos</button>
+          <button onclick="setFilterTab('Ingresos cobrados')" data-tab="Ingresos cobrados" class="tab-btn px-3 py-1 rounded-md">Ingresos cobrados</button>
+          <button onclick="setFilterTab('Por ingresar')" data-tab="Por ingresar" class="tab-btn px-3 py-1 rounded-md">Por ingresar</button>
+          <button onclick="setFilterTab('Por pagar')" data-tab="Por pagar" class="tab-btn px-3 py-1 rounded-md">Por pagar</button>
+          <button onclick="setFilterTab('Ahorro / Inversión')" data-tab="Ahorro / Inversión" class="tab-btn px-3 py-1 rounded-md">Ahorro / Inversión</button>
+          <button onclick="setFilterTab('Completados')" data-tab="Completados" class="tab-btn px-3 py-1 rounded-md">Completados</button>
+        </div>
+      </div>
+
+      <div id="tagSummaryChips" class="flex flex-wrap gap-2 text-xs"></div>
+
+      <div class="flex flex-wrap gap-2 text-xs">
+        <select id="filterTagSelect" onchange="renderAll()" class="input-dark px-3 py-1.5">
+          <option value="">Todas las etiquetas</option>
+        </select>
+        <select id="filterTypeSelect" onchange="renderAll()" class="input-dark px-3 py-1.5">
+          <option value="">Todos los tipos</option>
+          <option value="Ingreso">Ingreso</option>
+          <option value="Gasto">Gasto</option>
+          <option value="Deuda">Deuda / Cuota</option>
+          <option value="Ahorro">Ahorro</option>
+        </select>
+        <input id="filterSearchInput" oninput="renderAll()" placeholder="Buscar concepto o etiqueta..." class="input-dark px-3 py-1.5 flex-1 min-w-[180px]" />
+      </div>
+
+      <div id="txList" class="space-y-2 pt-1"></div>
+    </section>
+  </div>
+
+  <!-- MODAL CONFIGURAR API IA -->
+  <div id="aiModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="card max-w-lg w-full p-5 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-white">Configurar Chat IA (Google Gemini)</h3>
+        <button onclick="closeModal('aiModal')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Gemini API Key (Gratis en aistudio.google.com)</label>
+          <input id="geminiKeyInput" type="password" placeholder="AIzaSy..." class="input-dark w-full p-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Modelo</label>
+          <input id="geminiModelInput" value="gemini-3.5-flash-lite" class="input-dark w-full p-2.5 text-sm" />
+          <p class="text-[11px] text-slate-500 mt-1">Recomendados: gemini-3.5-flash-lite o gemini-3.8-flash</p>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Prompt Predeterminado del Mentor (Editable)</label>
+          <textarea id="systemPromptInput" rows="6" class="input-dark w-full p-2.5 text-xs"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button onclick="resetDefaultPrompt()" class="px-3 py-2 rounded-lg border border-slate-700 text-xs text-slate-300">Restaurar Prompt</button>
+        <button onclick="saveAiConfig()" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold">Guardar IA</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIGURAR NUBE FIREBASE -->
+  <div id="cloudModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="card max-w-lg w-full p-5 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-white">Sincronización en Vivo (PC ↔ Teléfono)</h3>
+        <button onclick="closeModal('cloudModal')" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Pega aquí la configuración de tu proyecto gratuito de <strong>Firebase Firestore</strong> y usa el mismo <strong>Código de Billetera</strong> en tu PC y teléfono para sincronizar en vivo.
+      </p>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Código secreto de tu billetera (Room ID)</label>
+          <input id="cloudRoomInput" placeholder="ej: mi-billetera-vzla-2026" class="input-dark w-full p-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Firebase Config (JSON)</label>
+          <textarea id="firebaseConfigInput" rows="5" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}' class="input-dark w-full p-2.5 text-xs font-mono"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-between items-center pt-1">
+        <button onclick="disconnectCloud()" class="px-3 py-2 rounded-lg border border-rose-500/40 text-rose-400 text-xs">Usar solo Local</button>
+        <button onclick="saveCloudConfig()" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold">Conectar en Vivo</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_SYSTEM_PROMPT = `Eres Nexus Mentor, un profesor y asesor experto en finanzas personales en Venezuela.
+Tu objetivo NO es hacer que el usuario dependa de ti, sino ENSEÑARLE a analizar sus propios números y tomar decisiones inteligentes.
+
+Estructura siempre tus respuestas así:
+1. RADIOGRAFÍA DE TUS NÚMEROS: Resume en 2 líneas su Disponible Real, sus próximos compromisos (0-7 días) y la brecha BCV vs USDT actual.
+2. EL PRINCIPIO DETRÁS DE ESTA DECISIÓN: Explica brevemente la regla financiera que aplica aquí (ej. Puente de liquidez vs Bola de nieve, Costo financiero, Arbitraje de tasa BCV/USDT, Regla de cobertura).
+3. ANÁLISIS PASO A PASO (OPCIÓN A vs OPCIÓN B): Haz las cuentas visibles para que el usuario aprenda cómo calcularlo él mismo la próxima vez.
+   - Si pregunta por créditos rotativos (como Ubi) para pagar otras cuotas (ej. nevera/Cashea), evalúa: a) cuánto cuesta la comisión del puente, b) si tiene ingresos confirmados antes del vencimiento de Ubi, y c) el riesgo de quedar atrapado pagando deuda con deuda.
+   - Si hay brecha alta entre BCV y USDT, explica cómo aprovecharla pagando deudas en Bs sin perder liquidez en divisas.
+4. PREGUNTA GUÍA PARA TU DECISIÓN: Termina devolviéndole 1 o 2 preguntas concretas para que él mismo evalúe el riesgo y elija su mejor jugada.
+
+Usa siempre los datos reales del JSON adjunto y mantén un tono claro, pedagógico y directo.`;
+
+    let state = {
+      rates: { bcv: 926.36, usdt: 1104.95 },
+      activeRateType: 'bcv',
+      savingsGoal: 500,
+      transactions: [],
+      updatedAt: 0
+    };
+
+    let aiConfig = {
+      apiKey: '',
+      model: 'gemini-3.5-flash-lite',
+      systemPrompt: DEFAULT_SYSTEM_PROMPT
+    };
+
+    let cloudConfig = { roomId: '', firebaseJson: '' };
+    let filterTab = 'Todos';
+    let chatHistory = [];
+    let firestoreUnsubscribe = null;
+    let firestoreDocRef = null;
+    let firestoreSetDoc = null;
+    let isApplyingRemoteUpdate = false;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const today = new Date();
+      document.getElementById('currentDateText').textContent = today.toLocaleDateString('es-VE', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+
+      const isoToday = getLocalIsoDate(today);
+      document.getElementById('txDate').value = isoToday;
+      document.getElementById('txDueDate').value = isoToday;
+      document.getElementById('instStartDate').value = isoToday;
+      document.getElementById('rotDate').value = isoToday;
+      document.getElementById('rotDueDate').value = addScheduleDate(isoToday, 15, 1);
+
+      loadLocalData();
+      fetchVenezuelaRates(false);
+      renderAll();
+      connectCloudIfConfigured();
+    });
+
+    function getLocalIsoDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function addScheduleDate(startIso, freq, step) {
+      const [y, m, d] = startIso.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      if (freq === 'monthly') {
+        dt.setMonth(dt.getMonth() + step);
+      } else {
+        dt.setDate(dt.getDate() + Number(freq) * step);
+      }
+      return getLocalIsoDate(dt);
+    }
+
+    function loadLocalData() {
+      try {
+        const saved = localStorage.getItem('nexus_finanzas_state');
+        if (saved) state = { ...state, ...JSON.parse(saved) };
+        const savedAi = localStorage.getItem('nexus_finanzas_ai');
+        if (savedAi) aiConfig = { ...aiConfig, ...JSON.parse(savedAi) };
+        const savedCloud = localStorage.getItem('nexus_finanzas_cloud');
+        if (savedCloud) cloudConfig = { ...cloudConfig, ...JSON.parse(savedCloud) };
+      } catch {}
+      updateAiBadge();
+    }
+
+    function persistState() {
+      state.updatedAt = Date.now();
+      localStorage.setItem('nexus_finanzas_state', JSON.stringify(state));
+      if (firestoreDocRef && firestoreSetDoc && !isApplyingRemoteUpdate) {
+        firestoreSetDoc(firestoreDocRef, state).catch(err => console.error('Error nube:', err));
+      }
+    }
+
+    async function fetchVenezuelaRates(manualClick) {
+      try {
+        const [resOficial, resParalelo] = await Promise.all([
+          fetch('https://ve.dolarapi.com/v1/dolares/oficial'),
+          fetch('https://ve.dolarapi.com/v1/dolares/paralelo')
+        ]);
+        const oficial = await resOficial.json();
+        const paralelo = await resParalelo.json();
+        if (oficial?.promedio) state.rates.bcv = Number(oficial.promedio.toFixed(2));
+        if (paralelo?.promedio) state.rates.usdt = Number(paralelo.promedio.toFixed(2));
+        persistState();
+        renderAll();
+        if (manualClick) alert(`Tasas actualizadas:\nBCV: Bs ${formatBs(state.rates.bcv)}\nParalelo/USDT: Bs ${formatBs(state.rates.usdt)}`);
+      } catch {
+        if (manualClick) alert('No se pudo conectar con DolarApi ahora. Puedes editar las tasas manualmente.');
+      }
+    }
+
+    function getActiveRate() {
+      const bcv = Number(state.rates.bcv) || 1;
+      const usdt = Number(state.rates.usdt) || bcv;
+      if (state.activeRateType === 'bcv') return bcv;
+      if (state.activeRateType === 'usdt') return usdt;
+      return Number(((bcv + usdt) / 2).toFixed(2));
+    }
+
+    function updateManualRate(type, val) {
+      const num = parseFloat(val);
+      if (num > 0) { state.rates[type] = num; persistState(); renderAll(); }
+    }
+
+    function setActiveRateType(type) {
+      state.activeRateType = type; persistState(); renderAll();
+    }
+
+    function updateSavingsGoal(val) {
+      const num = parseFloat(val);
+      if (num >= 0) { state.savingsGoal = num; persistState(); renderAll(); }
+    }
+
+    function formatUsd(n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function formatBs(n) { return Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
+    // CAMBIO DE PESTAÑAS DEL FORMULARIO
+    function setFormMode(mode) {
+      const modes = { simple: ['modeSimpleBtn', 'panelSimple'], installments: ['modeInstallmentsBtn', 'panelInstallments'], rotative: ['modeRotativeBtn', 'panelRotative'] };
+      Object.entries(modes).forEach(([k, [btnId, panelId]]) => {
+        const active = k === mode;
+        document.getElementById(panelId).classList.toggle('hidden', !active);
+        document.getElementById(btnId).className = active
+          ? 'px-2.5 py-1 rounded font-semibold bg-emerald-500 text-slate-950'
+          : 'px-2.5 py-1 rounded text-slate-400 hover:text-white';
+      });
+    }
+
+    // MODO SIMPLE
+    function updateAnchorPreview() {
+      const curr = document.getElementById('txCurrency').value;
+      const amount = parseFloat(document.getElementById('txAmount').value) || 0;
+      const rate = getActiveRate();
+      document.getElementById('txAmountLabel').textContent = curr === 'USD' ? 'Monto en Dólares ($ - ancla)' : 'Monto en Bolívares (Bs)';
+      const usd = curr === 'USD' ? amount : (amount / rate);
+      document.getElementById('anchorPreview').textContent = `Ancla: $ ${formatUsd(usd)} × ${formatBs(rate)} = Bs ${formatBs(usd * rate)}`;
+    }
+
+    function addTransaction(e) {
+      e.preventDefault();
+      const curr = document.getElementById('txCurrency').value;
+      const rawAmount = parseFloat(document.getElementById('txAmount').value) || 0;
+      const rate = getActiveRate();
+      const amountUsd = curr === 'USD' ? rawAmount : Number((rawAmount / rate).toFixed(2));
+      const tags = document.getElementById('txTags').value.split(',').map(t => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
+
+      state.transactions.unshift({
+        id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        type: document.getElementById('txType').value,
+        status: document.getElementById('txStatus').value,
+        concept: document.getElementById('txConcept').value.trim(),
+        tags,
+        amountUsd,
+        date: document.getElementById('txDate').value,
+        dueDate: document.getElementById('txDueDate').value || document.getElementById('txDate').value
+      });
+
+      persistState();
+      e.target.reset();
+      const isoToday = getLocalIsoDate(new Date());
+      document.getElementById('txDate').value = isoToday;
+      document.getElementById('txDueDate').value = isoToday;
+      updateAnchorPreview();
+      renderAll();
+    }
+
+    // MODO CUOTAS (NEVERA / CASHEA / KRECE)
+    function updateInstallmentPreview() {
+      const total = parseFloat(document.getElementById('instTotal').value) || 0;
+      const initial = parseFloat(document.getElementById('instInitial').value) || 0;
+      const count = parseInt(document.getElementById('instCount').value, 10) || 1;
+      const freq = document.getElementById('instFreq').value;
+      const start = document.getElementById('instStartDate').value || getLocalIsoDate(new Date());
+
+      const remaining = Math.max(0, total - initial);
+      const each = remaining / count;
+      const lastDate = addScheduleDate(start, freq, count);
+      document.getElementById('instPreview').innerHTML =
+        `Plan: <strong>Inicial hoy $${formatUsd(initial)}</strong> + <strong>${count} cuotas de ~$${formatUsd(each)}</strong> (Financiamiento restante: $${formatUsd(remaining)} · Última cuota: ${lastDate}).`;
+    }
+
+    function addInstallmentPlan(e) {
+      e.preventDefault();
+      const concept = document.getElementById('instConcept').value.trim();
+      const tags = document.getElementById('instTags').value.split(',').map(t => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean);
+      if (!tags.includes('cuotas')) tags.push('cuotas');
+
+      const total = parseFloat(document.getElementById('instTotal').value) || 0;
+      const initial = parseFloat(document.getElementById('instInitial').value) || 0;
+      const count = Math.max(1, parseInt(document.getElementById('instCount').value, 10) || 1);
+      const freq = document.getElementById('instFreq').value;
+      const startDate = document.getElementById('instStartDate').value;
+
+      const remaining = Math.max(0, Number((total - initial).toFixed(2)));
+      const newItems = [];
+
+      if (initial > 0) {
+        newItems.push({
+          id: 'tx_' + Date.now() + '_init',
+          type: 'Gasto',
+          status: 'Completado',
+          concept: `${concept} (Inicial)`,
+          tags: [...tags],
+          amountUsd: initial,
+          date: startDate,
+          dueDate: startDate
+        });
+      }
+
+      if (remaining > 0) {
+        const base = Math.floor((remaining / count) * 100) / 100;
+        const last = Number((remaining - base * (count - 1)).toFixed(2));
+        for (let i = 1; i <= count; i++) {
+          newItems.push({
+            id: 'tx_' + Date.now() + '_c' + i + '_' + Math.random().toString(36).slice(2, 5),
+            type: 'Deuda',
+            status: 'Pendiente',
+            concept: `${concept} · Cuota ${i}/${count}`,
+            tags: [...tags],
+            amountUsd: i === count ? last : base,
+            date: startDate,
+            dueDate: addScheduleDate(startDate, freq, i)
+          });
+        }
+      }
+
+      state.transactions = [...newItems, ...state.transactions];
+      persistState();
+      e.target.reset();
+      document.getElementById('instInitial').value = 0;
+      document.getElementById('instCount').value = 6;
+      document.getElementById('instStartDate').value = getLocalIsoDate(new Date());
+      updateInstallmentPreview();
+      renderAll();
+      alert(`¡Listo! Se registró la compra "${concept}" con ${count} cuota(s) agendada(s).`);
+    }
+
+    // MODO PUENTE / ROTATIVO (UBI)
+    function updateRotativePreview() {
+      const amt = parseFloat(document.getElementById('rotAmount').value) || 0;
+      const rep = parseFloat(document.getElementById('rotRepay').value) || 0;
+      const fee = Math.max(0, rep - amt);
+      const pct = amt > 0 ? ((fee / amt) * 100).toFixed(1) : '0.0';
+      document.getElementById('rotPreview').innerHTML =
+        `Costo financiero del puente: <strong>$ ${formatUsd(fee)} (${pct}%)</strong>. Recibes $${formatUsd(amt)} hoy y agendas deuda de $${formatUsd(rep)}.`;
+    }
+
+    function addRotativeBridge(e) {
+      e.preventDefault();
+      const platform = document.getElementById('rotName').value.trim() || 'Ubi';
+      const purpose = document.getElementById('rotPurpose').value.trim();
+      const amt = parseFloat(document.getElementById('rotAmount').value) || 0;
+      const rep = parseFloat(document.getElementById('rotRepay').value) || 0;
+      const date = document.getElementById('rotDate').value;
+      const dueDate = document.getElementById('rotDueDate').value;
+      const tagPlatform = platform.toLowerCase().replace(/\s+/g, '');
+
+      const uid = Date.now();
+      // 1. Deuda futura a devolver
+      const debtTx = {
+        id: 'tx_' + uid + '_rot_debt',
+        type: 'Deuda',
+        status: 'Pendiente',
+        concept: `Devolución ${platform} (Puente: ${purpose})`,
+        tags: [tagPlatform, 'puente'],
+        amountUsd: rep,
+        date,
+        dueDate
+      };
+      // 2. Liquidez recibida hoy para poder pagar la otra cuota sin descuadrar la caja
+      const inTx = {
+        id: 'tx_' + uid + '_rot_in',
+        type: 'Ingreso',
+        status: 'Completado',
+        concept: `Desembolso ${platform} → ${purpose}`,
+        tags: [tagPlatform, 'puente'],
+        amountUsd: amt,
+        date,
+        dueDate: date
+      };
+
+      state.transactions.unshift(debtTx, inTx);
+      persistState();
+      e.target.reset();
+      document.getElementById('rotName').value = 'Ubi';
+      const isoToday = getLocalIsoDate(new Date());
+      document.getElementById('rotDate').value = isoToday;
+      document.getElementById('rotDueDate').value = addScheduleDate(isoToday, 15, 1);
+      updateRotativePreview();
+      renderAll();
+      alert(`Puente con ${platform} registrado. Ahora marca como completada (✓) la cuota que pagaste con ese dinero.`);
+    }
+
+    function toggleTxStatus(id) {
+      const tx = state.transactions.find(t => t.id === id);
+      if (!tx) return;
+      tx.status = tx.status === 'Completado' ? 'Pendiente' : 'Completado';
+      persistState();
+      renderAll();
+    }
+
+    function deleteTx(id) {
+      if (!confirm('¿Eliminar este movimiento?')) return;
+      state.transactions = state.transactions.filter(t => t.id !== id);
+      persistState();
+      renderAll();
+    }
+
+    function computeSummary() {
+      let incomeDone = 0, incomePending = 0, outDone = 0, outPending = 0, savingsDone = 0;
+      const upcoming = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      for (const tx of state.transactions) {
+        const amt = Number(tx.amountUsd) || 0;
+        if (tx.type === 'Ingreso') {
+          if (tx.status === 'Completado') incomeDone += amt;
+          else incomePending += amt;
+        } else if (tx.type === 'Ahorro') {
+          if (tx.status === 'Completado') savingsDone += amt;
+        } else {
+          if (tx.status === 'Completado') outDone += amt;
+          else {
+            outPending += amt;
+            if (tx.dueDate) {
+              const [y, m, d] = tx.dueDate.split('-').map(Number);
+              const dt = new Date(y, m - 1, d);
+              const diffDays = Math.ceil((dt - today) / (1000 * 60 * 60 * 24));
+              if (diffDays <= 7) upcoming.push({ ...tx, diffDays });
+            }
+          }
+        }
+      }
+
+      const availableReal = incomeDone - outDone - savingsDone;
+      const projected = availableReal + incomePending - outPending;
+      return { incomeDone, incomePending, outDone, outPending, savingsDone, availableReal, projected, upcoming };
+    }
+
+    function renderAll() {
+      const rate = getActiveRate();
+      const bcv = Number(state.rates.bcv) || 1;
+      const usdt = Number(state.rates.usdt) || bcv;
+      const prom = (bcv + usdt) / 2;
+
+      document.getElementById('rateBcvInput').value = bcv;
+      document.getElementById('rateUsdtInput').value = usdt;
+      document.getElementById('ratePromText').textContent = formatBs(prom);
+      document.getElementById('savingsGoalInput').value = state.savingsGoal;
+
+      ['bcv', 'prom', 'usdt'].forEach(t => {
+        const btn = document.getElementById('btnRate' + t.charAt(0).toUpperCase() + t.slice(1));
+        btn.className = state.activeRateType === t
+          ? 'px-3 py-1 rounded-md font-semibold bg-emerald-500 text-slate-950 transition'
+          : 'px-3 py-1 rounded-md font-medium text-slate-400 hover:text-white transition';
+      });
+
+      const s = computeSummary();
+
+      const banner = document.getElementById('upcomingBanner');
+      const totalUpUsd = s.upcoming.reduce((a, b) => a + b.amountUsd, 0);
+      if (s.upcoming.length > 0) {
+        banner.classList.remove('hidden');
+        document.getElementById('upcomingTitle').textContent = `Compromisos próximos (0 a 7 días): ${s.upcoming.length} movimiento(s)`;
+        document.getElementById('upcomingTotalUsd').textContent = `$ ${formatUsd(totalUpUsd)}`;
+        document.getElementById('upcomingTotalBs').textContent = `Bs ${formatBs(totalUpUsd * rate)}`;
+        document.getElementById('upcomingChips').innerHTML = s.upcoming.map(u => `
+          <span class="px-2.5 py-1 rounded-full bg-slate-900/90 border border-amber-500/30 text-xs text-slate-200">
+            ${escapeHtml(u.concept)}: <strong>$ ${formatUsd(u.amountUsd)}</strong> (Bs ${formatBs(u.amountUsd * rate)} · ${u.dueDate})
+          </span>
+        `).join('');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      const availEl = document.getElementById('availableUsd');
+      availEl.textContent = `$ ${formatUsd(s.availableReal)}`;
+      availEl.className = `text-3xl md:text-4xl font-extrabold ${s.availableReal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+      document.getElementById('availableBs').textContent = `Bs ${formatBs(s.availableReal * rate)}`;
+
+      const modeLabel = state.activeRateType === 'bcv' ? 'BCV' : state.activeRateType === 'usdt' ? 'USDT' : 'Promedio';
+      document.getElementById('rateFormulaInfo').textContent =
+        `Modo: ${modeLabel} · Multiplicación: USD × ${formatBs(rate)} Bs/$ · Proyectado tras pendientes: $ ${formatUsd(s.projected)}`;
+
+      const goal = Number(state.savingsGoal) || 1;
+      const pct = Math.min(100, Math.max(0, (s.savingsDone / goal) * 100));
+      document.getElementById('savingsPctText').textContent = `${pct.toFixed(1)}% de meta`;
+      document.getElementById('savingsBar').style.width = `${pct}%`;
+      document.getElementById('savingsAccumText').textContent =
+        `Acumulado: $ ${formatUsd(s.savingsDone)} (Bs ${formatBs(s.savingsDone * rate)}) de $ ${formatUsd(state.savingsGoal)}`;
+
+      document.getElementById('kpiIncomeBs').textContent = `Bs ${formatBs(s.incomeDone * rate)}`;
+      document.getElementById('kpiIncomeUsd').textContent = `$ ${formatUsd(s.incomeDone)}`;
+      document.getElementById('kpiPendingInBs').textContent = `Bs ${formatBs(s.incomePending * rate)}`;
+      document.getElementById('kpiPendingInUsd').textContent = `$ ${formatUsd(s.incomePending)}`;
+      document.getElementById('kpiPendingOutBs').textContent = `Bs ${formatBs(s.outPending * rate)}`;
+      document.getElementById('kpiPendingOutUsd').textContent = `$ ${formatUsd(s.outPending)}`;
+      document.getElementById('kpiSavingsBs').textContent = `Bs ${formatBs(s.savingsDone * rate)}`;
+      document.getElementById('kpiSavingsUsd').textContent = `$ ${formatUsd(s.savingsDone)}`;
+
+      // TERMÓMETRO DE AUTOGESTIÓN
+      const spreadPct = ((usdt - bcv) / bcv) * 100;
+      document.getElementById('metricSpreadVal').textContent = `${spreadPct.toFixed(1)}% de brecha`;
+      document.getElementById('metricSpreadTip').textContent = spreadPct >= 12
+        ? 'Brecha alta: si tienes USDT y deudas ancladas a BCV, cambiar solo lo justo para pagar al día te deja ganancia cambiaria.'
+        : 'Brecha moderada/baja: prioriza pagar cuotas a tiempo para no perder acceso a líneas de crédito.';
+
+      const pressureEl = document.getElementById('metricPressureVal');
+      const pressureTip = document.getElementById('metricPressureTip');
+      if (totalUpUsd === 0) {
+        pressureEl.textContent = 'Sin presión (0%)';
+        pressureEl.className = 'text-sm font-bold text-emerald-400';
+        pressureTip.textContent = 'No tienes cuotas venciendo en los próximos 7 días. Buen momento para apartar a tu meta de ahorro.';
+      } else if (s.availableReal <= 0 || totalUpUsd > s.availableReal) {
+        pressureEl.textContent = 'Alerta: Supera tu disponible';
+        pressureEl.className = 'text-sm font-bold text-rose-400';
+        pressureTip.textContent = `Necesitas $${formatUsd(totalUpUsd)} y tienes $${formatUsd(Math.max(0, s.availableReal))}. Revisa tus ingresos "Por ingresar" antes de usar un puente.`;
+      } else {
+        const ratio = (totalUpUsd / s.availableReal) * 100;
+        pressureEl.textContent = `${ratio.toFixed(0)}% de tu disponible`;
+        pressureEl.className = ratio > 70 ? 'text-sm font-bold text-amber-400' : 'text-sm font-bold text-emerald-400';
+        pressureTip.textContent = ratio > 70
+          ? 'Compromiso ajustado: evita adquirir nuevas cuotas hasta liberar las de esta semana.'
+          : 'Flujo saludable: cubres los próximos 7 días sin necesidad de endeudarte.';
+      }
+
+      updateAnchorPreview();
+      renderTagsAndList(rate);
+    }
+
+    function setFilterTab(tab) { filterTab = tab; renderAll(); }
+
+    function renderTagsAndList(rate) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.className = btn.dataset.tab === filterTab
+          ? 'tab-btn px-3 py-1 rounded-md bg-emerald-500 text-slate-950 font-semibold'
+          : 'tab-btn px-3 py-1 rounded-md bg-slate-900 border border-slate-800 text-slate-400 hover:text-white';
+      });
+
+      const tagTotals = {};
+      state.transactions.forEach(tx => {
+        (tx.tags || []).forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + tx.amountUsd; });
+      });
+
+      const tagSelect = document.getElementById('filterTagSelect');
+      const currentTag = tagSelect.value;
+      const allTags = Object.keys(tagTotals).sort();
+      tagSelect.innerHTML = '<option value="">Todas las etiquetas</option>' +
+        allTags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
+      if (allTags.includes(currentTag)) tagSelect.value = currentTag;
+
+      document.getElementById('tagSummaryChips').innerHTML = allTags.map(t => `
+        <button onclick="document.getElementById('filterTagSelect').value='${escapeHtml(t)}'; renderAll()"
+          class="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 hover:border-sky-500 text-sky-300">
+          #${escapeHtml(t)} · $ ${formatUsd(tagTotals[t])} (Bs ${formatBs(tagTotals[t] * rate)})
+        </button>
+      `).join('');
+
+      const selTag = document.getElementById('filterTagSelect').value;
+      const selType = document.getElementById('filterTypeSelect').value;
+      const search = document.getElementById('filterSearchInput').value.toLowerCase().trim();
+
+      const filtered = state.transactions.filter(tx => {
+        if (filterTab === 'Ingresos cobrados' && !(tx.type === 'Ingreso' && tx.status === 'Completado')) return false;
+        if (filterTab === 'Por ingresar' && !(tx.type === 'Ingreso' && tx.status === 'Pendiente')) return false;
+        if (filterTab === 'Por pagar' && !((tx.type === 'Gasto' || tx.type === 'Deuda') && tx.status === 'Pendiente')) return false;
+        if (filterTab === 'Ahorro / Inversión' && tx.type !== 'Ahorro') return false;
+        if (filterTab === 'Completados' && tx.status !== 'Completado') return false;
+        if (selTag && !(tx.tags || []).includes(selTag)) return false;
+        if (selType && tx.type !== selType) return false;
+        if (search && !`${tx.concept} ${(tx.tags || []).join(' ')}`.toLowerCase().includes(search)) return false;
+        return true;
+      });
+
+      const listEl = document.getElementById('txList');
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs">No hay movimientos para este filtro.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(tx => {
+        const isPositive = tx.type === 'Ingreso';
+        const sign = isPositive ? '+' : (tx.type === 'Ahorro' ? '★ ' : '-');
+        const color = isPositive ? 'text-emerald-400' : (tx.type === 'Ahorro' ? 'text-amber-400' : 'text-rose-400');
+        const doneStyle = tx.status === 'Completado' ? '' : 'border-l-2 border-l-amber-400';
+
+        return `
+          <div class="subcard p-3 flex flex-wrap items-center justify-between gap-3 ${doneStyle}">
+            <div class="space-y-1">
+              <div class="font-semibold text-white text-sm">${escapeHtml(tx.concept)}</div>
+              <div class="text-xs text-slate-400">
+                ${tx.type} · <span class="${tx.status === 'Completado' ? 'text-emerald-400' : 'text-amber-400'}">${tx.status}</span>
+                · Ancla: $ ${formatUsd(tx.amountUsd)} · Vence: ${tx.dueDate || tx.date}
+              </div>
+              <div class="flex flex-wrap gap-1 pt-0.5">
+                ${(tx.tags || []).map(tag => `<span class="px-2 py-0.5 rounded bg-sky-950/70 border border-sky-500/30 text-sky-300 text-[11px]">#${escapeHtml(tag)}</span>`).join('')}
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 ml-auto">
+              <div class="text-right">
+                <div class="font-bold text-sm ${color}">${sign}Bs ${formatBs(tx.amountUsd * rate)}</div>
+                <div class="text-xs text-slate-400">${sign}$ ${formatUsd(tx.amountUsd)}</div>
+              </div>
+              <button onclick="toggleTxStatus('${tx.id}')" title="Marcar completado / pendiente"
+                class="w-8 h-8 rounded-lg border ${tx.status === 'Completado' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-emerald-400'}">
+                ✓
+              </button>
+              <button onclick="deleteTx('${tx.id}')" title="Eliminar"
+                class="w-8 h-8 rounded-lg border border-slate-700 bg-slate-800 hover:bg-rose-950 hover:border-rose-500 text-slate-400 hover:text-rose-400">
+                ✕
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function exportJSON() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `nexus-finanzas-${getLocalIsoDate(new Date())}.json`;
+      a.click();
+    }
+
+    function importJSON(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (Array.isArray(parsed.transactions)) {
+            state = { ...state, ...parsed };
+            persistState(); renderAll();
+            alert('Respaldo importado con éxito.');
+          }
+        } catch { alert('Archivo JSON inválido.'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function buildFinancialContextJson() {
+      const s = computeSummary();
+      const bcv = Number(state.rates.bcv);
+      const usdt = Number(state.rates.usdt);
+      return {
+        tasas: { bcv, usdt, brechaPct: (((usdt - bcv) / bcv) * 100).toFixed(1) + '%', tasaActiva: state.activeRateType },
+        resumenUsd: {
+          disponibleReal: Number(s.availableReal.toFixed(2)),
+          proyectadoTrasPendientes: Number(s.projected.toFixed(2)),
+          ingresosCobrados: Number(s.incomeDone.toFixed(2)),
+          porIngresar: Number(s.incomePending.toFixed(2)),
+          porPagarTotal: Number(s.outPending.toFixed(2)),
+          ahorroAcumulado: Number(s.savingsDone.toFixed(2)),
+          metaAhorro: state.savingsGoal
+        },
+        compromisosProximos7Dias: s.upcoming.map(u => ({ concepto: u.concept, usd: u.amountUsd, vence: u.dueDate, tags: u.tags })),
+        pendientesPorPagar: state.transactions.filter(t => (t.type === 'Deuda' || t.type === 'Gasto') && t.status === 'Pendiente').slice(0, 15)
+      };
+    }
+
+    function quickAsk(promptText) {
+      document.getElementById('chatInput').value = promptText;
+      sendChatMessage({ preventDefault: () => {} });
+    }
+
+    async function sendChatMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      appendChatBubble('user', text);
+      chatHistory.push({ role: 'user', parts: [{ text }] });
+
+      if (!aiConfig.apiKey) {
+        const s = computeSummary();
+        const brecha = (((state.rates.usdt - state.rates.bcv) / state.rates.bcv) * 100).toFixed(1);
+        const upUsd = s.upcoming.reduce((a, b) => a + b.amountUsd, 0);
+        const reply = `📊 Guía rápida (Sin API Key):\n1) Tus números: Disponible $${formatUsd(s.availableReal)} vs Compromisos 7 días $${formatUsd(upUsd)}.\n2) Brecha BCV/USDT: ${brecha}%.\n3) Pregunta clave para ti: ¿Tus ingresos "Por ingresar" ($${formatUsd(s.incomePending)}) llegan antes de los vencimientos? Configura Gemini arriba en "API IA" para analizar escenarios completos.`;
+        appendChatBubble('model', reply);
+        chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+        return;
+      }
+
+      const btn = document.getElementById('chatSendBtn');
+      btn.disabled = true; btn.textContent = '...';
+      const loadingEl = appendChatBubble('model', 'Analizando tus escenarios...');
+
+      try {
+        const fullSystemPrompt = `${aiConfig.systemPrompt}\n\n[DATOS EN VIVO DEL USUARIO EN FORMATO JSON]:\n${JSON.stringify(buildFinancialContextJson())}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiConfig.model)}:generateContent?key=${encodeURIComponent(aiConfig.apiKey)}`;
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: fullSystemPrompt }] },
+            contents: chatHistory.slice(-10),
+            generationConfig: { temperature: 0.4 }
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || 'Error en Gemini API');
+        const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta.';
+        loadingEl.innerHTML = escapeHtml(replyText).replace(/\n/g, '<br>');
+        chatHistory.push({ role: 'model', parts: [{ text: replyText }] });
+      } catch (err) {
+        loadingEl.textContent = 'Error IA: ' + err.message;
+      } finally {
+        btn.disabled = false; btn.textContent = 'Enviar';
+      }
+    }
+
+    function appendChatBubble(role, text) {
+      const box = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = role === 'user'
+        ? 'ml-auto bg-emerald-500/20 border border-emerald-500/30 rounded-lg p-2.5 text-slate-100 max-w-[85%]'
+        : 'bg-violet-950/50 border border-violet-500/30 rounded-lg p-2.5 text-slate-200 max-w-[95%]';
+      div.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+      return div;
+    }
+
+    function openAiModal() {
+      document.getElementById('geminiKeyInput').value = aiConfig.apiKey;
+      document.getElementById('geminiModelInput').value = aiConfig.model;
+      document.getElementById('systemPromptInput').value = aiConfig.systemPrompt;
+      document.getElementById('aiModal').classList.remove('hidden');
+    }
+    function resetDefaultPrompt() { document.getElementById('systemPromptInput').value = DEFAULT_SYSTEM_PROMPT; }
+    function saveAiConfig() {
+      aiConfig.apiKey = document.getElementById('geminiKeyInput').value.trim();
+      aiConfig.model = document.getElementById('geminiModelInput').value.trim() || 'gemini-3.5-flash-lite';
+      aiConfig.systemPrompt = document.getElementById('systemPromptInput').value.trim() || DEFAULT_SYSTEM_PROMPT;
+      localStorage.setItem('nexus_finanzas_ai', JSON.stringify(aiConfig));
+      updateAiBadge(); closeModal('aiModal');
+    }
+    function updateAiBadge() {
+      document.getElementById('aiStatusBadge').className = aiConfig.apiKey ? 'text-[10px] text-emerald-400 ml-1' : 'text-[10px] text-slate-500 ml-1';
+    }
+
+    function openCloudModal() {
+      document.getElementById('cloudRoomInput').value = cloudConfig.roomId;
+      document.getElementById('firebaseConfigInput').value = cloudConfig.firebaseJson;
+      document.getElementById('cloudModal').classList.remove('hidden');
+    }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+    function saveCloudConfig() {
+      cloudConfig.roomId = document.getElementById('cloudRoomInput').value.trim();
+      cloudConfig.firebaseJson = document.getElementById('firebaseConfigInput').value.trim();
+      localStorage.setItem('nexus_finanzas_cloud', JSON.stringify(cloudConfig));
+      closeModal('cloudModal');
+      connectCloudIfConfigured();
+    }
+    function disconnectCloud() {
+      if (firestoreUnsubscribe) firestoreUnsubscribe();
+      firestoreUnsubscribe = null; firestoreDocRef = null;
+      cloudConfig = { roomId: '', firebaseJson: '' };
+      localStorage.removeItem('nexus_finanzas_cloud');
+      setSyncUI(false, 'Local (Config. Nube)');
+      closeModal('cloudModal');
+    }
+    function setSyncUI(connected, label) {
+      document.getElementById('syncDot').className = `w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`;
+      document.getElementById('syncText').textContent = label;
+    }
+
+    async function connectCloudIfConfigured() {
+      if (!cloudConfig.roomId || !cloudConfig.firebaseJson) return;
+      try {
+        setSyncUI(false, 'Conectando...');
+        const fbCfg = JSON.parse(cloudConfig.firebaseJson);
+        const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
+        const { getFirestore, doc, onSnapshot, setDoc } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');
+
+        const app = getApps().length ? getApps()[0] : initializeApp(fbCfg);
+        const db = getFirestore(app);
+        firestoreSetDoc = setDoc;
+        firestoreDocRef = doc(db, 'billeteras', cloudConfig.roomId);
+
+        if (firestoreUnsubscribe) firestoreUnsubscribe();
+        firestoreUnsubscribe = onSnapshot(firestoreDocRef, snap => {
+          setSyncUI(true, 'Nube en vivo');
+          if (snap.exists()) {
+            const remote = snap.data();
+            if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
+              isApplyingRemoteUpdate = true;
+              state = { ...state, ...remote };
+              localStorage.setItem('nexus_finanzas_state', JSON.stringify(state));
+              renderAll();
+              isApplyingRemoteUpdate = false;
+            }
+          } else { setDoc(firestoreDocRef, state); }
+        }, () => setSyncUI(false, 'Error Nube'));
+      } catch { setSyncUI(false, 'Config inválida'); }
+    }
+  </script>
+</body>
+</html>
